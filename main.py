@@ -6,21 +6,22 @@ from src.models import CKNSequential
 def main():
     """
     Main execution script for the CKN project.
-    Pipeline: Unsupervised Dictionary Learning -> Supervised Linear Classification.
     """
     seed = 42
     batch_size = 128
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     hidden_channels = [64, 128]
-    filter_sizes = [6, 3]
+    filter_sizes = [5, 5]
     subsamplings = [2, 2]
     
-    # Kernel parameters (alpha) reduced to prevent feature saturation
-    # Layer 1: 0.5, Layer 2: 0.5
-    kernel_args = [0.5, 0.5]
+    # CORRECTION CRITIQUE ICI :
+    # On remonte alpha pour que le noyau soit discriminant.
+    # Avec 0.05, exp(alpha * ...) valait toujours 1.
+    # Avec 1.0, on aura de la variance.
+    kernel_args = [1.0, 1.0]
     
-    n_patches_unsup = 50000
+    n_patches_unsup = 100000
     epochs_sup = 20
     lr_sup = 0.01
 
@@ -35,7 +36,7 @@ def main():
         augment=True,
         use_unlabeled=True
     )
-    print(f"Data loaded. Input shape: {spec.channels}x{spec.image_size}x{spec.image_size}")
+    print(f"Data loaded. Input: {spec.channels}x{spec.image_size}x{spec.image_size}")
 
     print("Initializing CKN model...")
     model = CKNSequential(
@@ -57,7 +58,8 @@ def main():
         n_patches=n_patches_unsup,
         device=device
     )
-    print(f"Phase 1 completed in {time.time() - t0:.2f}s")
+    t_unsup = time.time() - t0
+    print(f"Phase 1 completed in {t_unsup:.2f}s")
 
     print("\nPhase 2: Supervised Classifier Training")
     t0 = time.time()
@@ -68,7 +70,9 @@ def main():
         lr=lr_sup,
         device=device
     )
-    print(f"Phase 2 completed in {time.time() - t0:.2f}s")
+    t_sup = time.time() - t0
+    print(f"Phase 2 completed in {t_sup:.2f}s")
+    print(f"Total Runtime: {t_unsup + t_sup:.2f}s")
     print("Execution finished successfully.")
 
 if __name__ == "__main__":
