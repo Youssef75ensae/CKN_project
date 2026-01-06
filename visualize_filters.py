@@ -87,10 +87,10 @@ def visualize_first_layer_filters():
         print("Error: Could not find weights in Layer 1.")
         return
 
-    print(f"Weights shape: {weights.shape}") # Expected: [64, 75]
+    print(f"Weights shape: {weights.shape}") 
     
     # Generate the plot
-    # We pass explicit filter dimensions (3 channels, 5x5 kernel) to reshape correctly
+    # We pass dimensions to allow correct reshaping of the flattened weights
     plot_filters(weights.cpu(), in_channels=3, kernel_size=5)
 
 def plot_filters(tensor, in_channels=3, kernel_size=5):
@@ -124,10 +124,11 @@ def plot_filters(tensor, in_channels=3, kernel_size=5):
     for i in range(n_rows * n_cols):
         ax = axes.flat[i]
         if i < num_filters:
-            # 1. Get the flattened filter
+            # 1. Get the flattened filter vector
             flat_filter = tensor[i]
             
             # 2. Reshape to (Channels, Height, Width) -> (3, 5, 5)
+            # This fixes the runtime error regarding dimensions
             reshaped_filter = flat_filter.view(in_channels, kernel_size, kernel_size)
             
             # 3. Transpose dimensions to (Height, Width, Channels) for Matplotlib
