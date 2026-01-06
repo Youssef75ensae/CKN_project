@@ -7,10 +7,10 @@ class CNNBaseline(nn.Module):
     """
     Standard CNN architecture for comparison with CKN.
     
-    This model implements a classical design pattern described by Geron (Chap. 14):
+    This model implements the classical design pattern described by Aurelien Geron (Chap. 14):
     a stack of convolutional blocks (Convolution -> ReLU -> Pooling) that progressively 
-    reduce spatial resolution while increasing depth, followed by a Global Average Pooling 
-    layer and a linear classifier.
+    reduce spatial resolution while increasing depth. It concludes with a Global Average 
+    Pooling layer to minimize parameters before the final linear classifier.
     """
     def __init__(self, in_channels: int, hidden_channels_list: list, kernel_sizes: list, 
                  subsamplings: list, out_features: int = 10):
@@ -18,11 +18,11 @@ class CNNBaseline(nn.Module):
         Dynamically builds the CNN architecture based on the provided hyperparameters.
         
         Args:
-            in_channels (int): Number of input image channels.
+            in_channels (int): Number of input image channels (e.g., 3 for RGB).
             hidden_channels_list (list): Number of filters for each convolutional block.
             kernel_sizes (list): Kernel size for each convolution.
             subsamplings (list): Pooling factors (strides) for each block.
-            out_features (int): Number of output classes.
+            out_features (int): Number of output classes (e.g., 10 for STL-10).
         """
         super(CNNBaseline, self).__init__()
         
@@ -30,7 +30,7 @@ class CNNBaseline(nn.Module):
         current_channels = in_channels
         
         for i in range(len(hidden_channels_list)):
-            # Convolutional Layer
+            # Add Convolutional Layer
             self.features.add_module(f"conv_{i}", nn.Conv2d(
                 in_channels=current_channels,
                 out_channels=hidden_channels_list[i],
@@ -38,10 +38,11 @@ class CNNBaseline(nn.Module):
                 padding=0 
             ))
             
-            # ReLU Activation
+            # Add ReLU Activation
             self.features.add_module(f"relu_{i}", nn.ReLU())
             
-            # Average Pooling (matches CKN behavior described in report)
+            # Add Pooling Layer (if subsampling factor > 1)
+            # Uses AveragePooling to maintain consistency with the CKN's information loss profile
             if subsamplings[i] > 1:
                 self.features.add_module(f"pool_{i}", nn.AvgPool2d(
                     kernel_size=subsamplings[i],
@@ -50,10 +51,10 @@ class CNNBaseline(nn.Module):
             
             current_channels = hidden_channels_list[i]
         
-        # Global Average Pooling Head
+        # Global Average Pooling: Reduces each feature map to a single mean value
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         
-        # Linear Classifier
+        # Final Linear Classifier
         self.classifier = nn.Linear(current_channels, out_features)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -70,7 +71,8 @@ class CNNBaseline(nn.Module):
                     epochs: int = 30, lr: float = 3e-4, weight_decay: float = 1e-4, 
                     device: str = 'cuda'):
         """
-        Executes the supervised training loop using Adam optimizer and CrossEntropyLoss.
+        Executes the full supervised training loop using the Adam optimizer and CrossEntropyLoss.
+        Prints loss and accuracy metrics at the end of every epoch.
         """
         self.to(device)
         self.train()
@@ -107,7 +109,8 @@ class CNNBaseline(nn.Module):
 
     def evaluate(self, dataloader: DataLoader, device: str = 'cuda') -> float:
         """
-        Computes the accuracy of the model on the provided dataset without updating gradients.
+        Computes the model accuracy on a given dataset.
+        Sets the model to evaluation mode and disables gradient calculation to save memory.
         """
         self.eval()
         correct = 0
