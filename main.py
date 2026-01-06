@@ -2,10 +2,11 @@ import time
 import torch
 from src.utils import seed_everything, get_stl10_loaders
 from src.models import CKNSequential
+from src.cnn_baseline import CNNBaseline
 
 def main():
     """
-    Main execution script for the CKN project.
+    Main execution script comparing CKN (Ours) vs CNN Baseline.
     """
     seed = 42
     batch_size = 128
@@ -15,16 +16,6 @@ def main():
     filter_sizes = [5, 5]
     subsamplings = [2, 2]
     
-    # CORRECTION CRITIQUE ICI :
-    # On remonte alpha pour que le noyau soit discriminant.
-    # Avec 0.05, exp(alpha * ...) valait toujours 1.
-    # Avec 1.0, on aura de la variance.
-    kernel_args = [1.0, 1.0]
-    
-    n_patches_unsup = 100000
-    epochs_sup = 20
-    lr_sup = 0.01
-
     seed_everything(seed)
     print(f"Device: {device}")
 
@@ -38,8 +29,14 @@ def main():
     )
     print(f"Data loaded. Input: {spec.channels}x{spec.image_size}x{spec.image_size}")
 
-    print("Initializing CKN model...")
-    model = CKNSequential(
+    print("\n[Model A] CKN (2-layer)")
+    
+    kernel_args = [1.0, 1.0]
+    n_patches_unsup = 100000
+    epochs_ckn = 30
+    lr_ckn = 0.01
+
+    ckn_model = CKNSequential(
         in_channels=spec.channels,
         hidden_channels_list=hidden_channels,
         filter_sizes=filter_sizes,
@@ -49,31 +46,50 @@ def main():
         use_linear_classifier=True,
         out_features=spec.num_classes
     )
-    model.to(device)
+    ckn_model.to(device)
 
-    print("\nPhase 1: Unsupervised Dictionary Learning")
+    print("Phase 1: Unsupervised Dictionary Learning")
     t0 = time.time()
-    model.train_unsupervised(
-        dataloader=unlabeled_loader,
-        n_patches=n_patches_unsup,
+    ckn_model.train_unsupervised(unlabeled_loader, n_patches_unsup, device)
+    t_ckn_unsup = time.time() - t0
+    print(f"Unsupervised time: {t_ckn_unsup:.2f}s")
+
+    print("Phase 2: Supervised Linear Training")
+    t0 = time.time()
+    ckn_model.train_classifier(train_loader, test_loader, epochs=epochs_ckn, lr=lr_ckn, device=device)
+    t_ckn_sup = time.time() - t0
+    print(f"CKN Total Runtime: {t_ckn_unsup + t_ckn_sup:.2f}s")
+
+    print("\n[Model B] CNN Baseline")
+
+    epochs_cnn = 30
+    lr_cnn = 3e-4
+    weight_decay_cnn = 1e-4
+
+    cnn_model = CNNBaseline(
+        in_channels=spec.channels,
+        hidden_channels_list=hidden_channels,
+        kernel_sizes=filter_sizes,
+        subsamplings=subsamplings,
+        out_features=spec.num_classes
+    )
+    
+    n_params = sum(p.numel() for p in cnn_model.parameters() if p.requires_grad)
+    print(f"CNN Trainable Parameters: {n_params/1e6:.2f}M")
+
+    t0 = time.time()
+    cnn_model.train_model(
+        train_loader, 
+        test_loader, 
+        epochs=epochs_cnn, 
+        lr=lr_cnn, 
+        weight_decay=weight_decay_cnn, 
         device=device
     )
-    t_unsup = time.time() - t0
-    print(f"Phase 1 completed in {t_unsup:.2f}s")
+    t_cnn_total = time.time() - t0
+    print(f"CNN Total Runtime: {t_cnn_total:.2f}s")
 
-    print("\nPhase 2: Supervised Classifier Training")
-    t0 = time.time()
-    model.train_classifier(
-        train_loader=train_loader,
-        test_loader=test_loader,
-        epochs=epochs_sup,
-        lr=lr_sup,
-        device=device
-    )
-    t_sup = time.time() - t0
-    print(f"Phase 2 completed in {t_sup:.2f}s")
-    print(f"Total Runtime: {t_unsup + t_sup:.2f}s")
-    print("Execution finished successfully.")
+    print("Experiment complete.")
 
 if __name__ == "__main__":
     main()
