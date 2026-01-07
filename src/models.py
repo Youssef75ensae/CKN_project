@@ -1,217 +1,168 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-from typing import List, Optional
-from torch.utils.data import DataLoader
-from tqdm import tqdm
 
-from src.layers import CKNLayer, Linear
-
-class L2Norm(nn.Module):
+class CKNLayer(nn.Module):
     """
-    Applies L2 normalization to the input tensor.
-    Operation: x -> x / ||x||_2
+    Implements a single layer of a Convolutional Kernel Network (CKN).
+    
+    This layer performs three main operations:
+    1. Patch extraction from the input tensor.
+    2. Non-linear mapping using a Gaussian kernel approximation.
+    3. Spatial pooling.
+    
+    Attributes:
+        patch_dim (int): Dimensionality of the extracted patches (C * H_k * W_k).
+        weight (torch.Tensor): Learnable filters (centroids) for the kernel approximation.
+        scale (torch.Tensor): Scaling factor associated with the kernel bandwidth (sigma).
     """
-    def __init__(self):
-        super(L2Norm, self).__init__()
+    def __init__(self, in_channels, out_channels, filter_size, subsampling, sigma=1.0):
+        super(CKNLayer, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.filter_size = filter_size
+        self.subsampling = subsampling
+        self.sigma = sigma
+        
+        self.unfold = nn.Unfold(kernel_size=filter_size, stride=1, padding=filter_size//2)
+        
+        patch_dim = in_channels * filter_size * filter_size
+        self.weight = nn.Parameter(torch.randn(out_channels, patch_dim))
+        
+        self.register_buffer('scale', torch.tensor(1.0 / (sigma ** 2)))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return F.normalize(x, p=2, dim=1)
+    def sample_patches(self, x, n_patches=1000):
+        """
+        Extracts a random subset of patches from the input batch.
+        Used for unsupervised dictionary learning.
+        
+        Args:
+            x (torch.Tensor): Input batch of images [B, C, H, W].
+            n_patches (int): Number of patches to sample.
+            
+        Returns:
+            torch.Tensor: Sampled patches of shape [n_patches, patch_dim].
+        """
+        patches = self.unfold(x)  
+        patches = patches.permute(0, 2, 1).reshape(-1, patches.size(1))  
+        
+        if patches.size(0) > n_patches:
+            indices = torch.randperm(patches.size(0))[:n_patches]
+            patches = patches[indices]
+            
+        return patches
+
+    def normalize_patches(self, patches):
+        """
+        Normalizes patches to have unit L2 norm.
+        """
+        norm = patches.norm(p=2, dim=1, keepdim=True)
+        return patches / (norm + 1e-8)
+
+    def unsup_train(self, patches, n_iterations=20):
+        """
+        Performs Spherical K-Means clustering to learn the layer filters.
+        
+        Args:
+            patches (torch.Tensor): Tensor of sampled patches.
+            n_iterations (int): Number of K-Means iterations.
+        """
+        patches = self.normalize_patches(patches)
+        
+        n_samples = patches.size(0)
+        indices = torch.randperm(n_samples)[:self.out_channels]
+        centroids = patches[indices]
+        centroids = self.normalize_patches(centroids)
+        
+        for _ in range(n_iterations):
+            dots = torch.matmul(patches, centroids.t())
+            labels = dots.argmax(dim=1)
+            
+            new_centroids = torch.zeros_like(centroids)
+            for k in range(self.out_channels):
+                mask = (labels == k)
+                if mask.sum() > 0:
+                    cluster_points = patches[mask]
+                    mean_vec = cluster_points.mean(dim=0)
+                    new_centroids[k] = mean_vec
+                else:
+                    new_centroids[k] = patches[torch.randint(0, n_samples, (1,))]
+            
+            centroids = self.normalize_patches(new_centroids)
+            
+        self.weight.data = centroids
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        patches = self.unfold(x) 
+        
+        w_norm = F.normalize(self.weight, p=2, dim=1)
+        
+        patches_t = patches.transpose(1, 2)
+        
+        patches_norm = torch.norm(patches_t, p=2, dim=2, keepdim=True) + 1e-8
+        patches_t = patches_t / patches_norm
+        
+        out = torch.matmul(patches_t, w_norm.t())
+        
+        out = torch.exp(self.scale * (out - 1.0))
+        
+        out = out.transpose(1, 2).view(B, self.out_channels, H, W)
+        
+        if self.subsampling > 1:
+            out = F.avg_pool2d(out, kernel_size=self.subsampling, stride=self.subsampling)
+            
+        return out
 
 class CKNSequential(nn.Module):
     """
-    Implements a Convolutional Kernel Network (CKN) architecture for image classification.
-
-    This module acts as a sequential container that stacks multiple `CKNLayer` instances
-    followed by a linear classification head. It implements the hybrid training protocol
-    proposed by Mairal et al. (2014):
+    A sequential model stacking multiple CKN layers.
+    Optionally includes a linear classification head for supervised tasks.
     
-    1.  Unsupervised Pre-training: The convolutional filters are learned layer by layer
-        using a Spherical K-Means algorithm on extracted patches. This approximates the
-        geometry of the data manifold without using labels.
-    
-    2.  Supervised Fine-tuning: Once the filters are fixed, the resulting feature map
-        is flattened, L2-normalized, and passed to a linear classifier trained via 
-        Stochastic Gradient Descent (SGD).
-
-    Attributes:
-        layers (nn.ModuleList): The sequence of unsupervised CKN layers.
-        classifier_head (nn.Sequential): The supervised component (L2Norm + Linear).
-        flat_features (int): The dimensionality of the feature vector before classification.
+    This class automatically computes the flattened dimension of the feature maps
+    to initialize the linear classifier correctly, regardless of input image size.
     """
-
-    def __init__(
-        self, 
-        in_channels: int, 
-        hidden_channels_list: List[int], 
-        filter_sizes: List[int], 
-        subsamplings: List[int], 
-        image_size: int,
-        kernel_args_list: Optional[List[float]] = None,
-        use_linear_classifier: bool = True,
-        out_features: int = 10
-    ):
-        """
-        Initializes the CKN architecture and dynamically infers the feature dimension.
-
-        Args:
-            in_channels (int): Number of input image channels.
-            hidden_channels_list (List[int]): Number of filters for each CKN layer.
-            filter_sizes (List[int]): Spatial size of the patch extraction for each layer.
-            subsamplings (List[int]): Pooling factor (stride) for each layer.
-            image_size (int): Spatial dimension of input images.
-            kernel_args_list (List[float], optional): Kernel parameters (alpha).
-            use_linear_classifier (bool): Whether to append the classification head.
-            out_features (int): Number of target classes.
-        """
+    def __init__(self, in_channels, hidden_channels_list, filter_sizes, subsamplings, 
+                 image_size, kernel_args_list, use_linear_classifier=False, out_features=10):
         super(CKNSequential, self).__init__()
         
-        assert len(hidden_channels_list) == len(filter_sizes) == len(subsamplings), \
-            "Hyperparameter lists must have the same length."
-
         self.layers = nn.ModuleList()
         current_channels = in_channels
-
-        # 1. Build CKN Layers
-        for i in range(len(hidden_channels_list)):
-            kernel_arg = kernel_args_list[i] if kernel_args_list else 0.5
+        
+        for i, (out_channels, k_size, subsampling, sigma) in enumerate(zip(
+            hidden_channels_list, filter_sizes, subsamplings, kernel_args_list)):
+            
             layer = CKNLayer(
                 in_channels=current_channels,
-                out_channels=hidden_channels_list[i],
-                patch_size=filter_sizes[i],
-                subsampling=subsamplings[i],
-                kernel_args=kernel_arg
+                out_channels=out_channels,
+                filter_size=k_size,
+                subsampling=subsampling,
+                sigma=sigma
             )
             self.layers.append(layer)
-            current_channels = hidden_channels_list[i]
+            current_channels = out_channels
 
-        # 2. Compute Flattened Dimension via Dummy Pass
-        with torch.no_grad():
-            dummy_input = torch.zeros(1, in_channels, image_size, image_size)
-            dummy_output = self.features(dummy_input)
-            self.flat_features = dummy_output.view(1, -1).size(1)
+        self.use_linear_classifier = use_linear_classifier
+        self.classifier = None
 
-        # 3. Final Classifier
-        # Replaces BatchNorm with L2 Normalization as per Mairal et al. (2014)
-        self.classifier_head = None
         if use_linear_classifier:
-            self.classifier_head = nn.Sequential(
-                L2Norm(),
-                nn.Linear(self.flat_features, out_features)
-            )
+            # Dynamic calculation of the flattened dimension
+            with torch.no_grad():
+                dummy_input = torch.zeros(1, in_channels, image_size, image_size)
+                dummy_out = dummy_input
+                for layer in self.layers:
+                    dummy_out = layer(dummy_out)
+                
+                flat_dim = dummy_out.view(1, -1).size(1)
+            
+            self.classifier = nn.Linear(flat_dim, out_features)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        features = self.features(x)
-        features = features.view(features.size(0), -1)
-        
-        if self.classifier_head is not None:
-            return self.classifier_head(features)
-        return features
-
-    def features(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         for layer in self.layers:
             x = layer(x)
+        
+        if self.use_linear_classifier:
+            x = x.flatten(1)
+            x = self.classifier(x)
+            
         return x
-
-    def train_unsupervised(self, dataloader: DataLoader, n_patches: int = 50000, device: str = 'cuda'):
-        """
-        Executes the greedy layer-wise unsupervised pre-training using Spherical K-Means.
-        """
-        self.to(device)
-        self.eval() 
-
-        with torch.no_grad():
-            for i, layer in enumerate(self.layers):
-                print(f"Training Layer {i+1}/{len(self.layers)} Unsupervised...")
-                
-                collected_patches = []
-                count = 0
-                
-                pbar = tqdm(total=n_patches, desc=f"Sampling (L{i+1})")
-                for x, _ in dataloader:
-                    if count >= n_patches: break
-                    x = x.to(device)
-                    
-                    for prev_layer_idx in range(i):
-                        x = self.layers[prev_layer_idx](x)
-                    
-                    patches = layer.sample_patches(x, n_patches=1000)
-                    collected_patches.append(patches.cpu())
-                    count += patches.size(0)
-                    pbar.update(patches.size(0))
-                pbar.close()
-
-                all_patches = torch.cat(collected_patches, dim=0)
-                if all_patches.size(0) > n_patches:
-                    all_patches = all_patches[:n_patches]
-                
-                layer.unsup_train(all_patches.to(device))
-
-    def train_classifier(self, train_loader: DataLoader, test_loader: DataLoader, 
-                         epochs: int = 20, lr: float = 0.01, device: str = 'cuda'):
-        """
-        Trains the final linear classifier in a supervised manner.
-        The CKN layers are frozen; only the Linear weights are updated.
-        """
-        if self.classifier_head is None:
-            raise ValueError("Model has no classifier head to train.")
-
-        self.to(device)
-        
-        # Freeze CKN layers
-        for layer in self.layers:
-            for param in layer.parameters():
-                param.requires_grad = False
-        
-        # Optimize only the classifier head
-        optimizer = optim.Adam(self.classifier_head.parameters(), lr=lr)
-        criterion = nn.CrossEntropyLoss()
-
-        print(f"\nStarting Supervised Training (LR={lr})...")
-
-        # DEBUG: Check feature stats before L2 normalization
-        first_batch, _ = next(iter(train_loader))
-        with torch.no_grad():
-            feats = self.features(first_batch.to(device)).view(first_batch.size(0), -1)
-            print(f"DEBUG (Pre-L2): Mean: {feats.mean().item():.4f}, Std: {feats.std().item():.4f}")
-
-        for epoch in range(epochs):
-            self.train() 
-            
-            total_loss = 0
-            correct = 0
-            total = 0
-            
-            for inputs, targets in train_loader:
-                inputs, targets = inputs.to(device), targets.to(device)
-                
-                optimizer.zero_grad()
-                outputs = self(inputs)
-                loss = criterion(outputs, targets)
-                loss.backward()
-                optimizer.step()
-
-                total_loss += loss.item() * inputs.size(0)
-                _, predicted = outputs.max(1)
-                total += targets.size(0)
-                correct += predicted.eq(targets).sum().item()
-
-            train_acc = 100. * correct / total
-            test_acc = self.evaluate(test_loader, device)
-            
-            print(f"Epoch {epoch+1}/{epochs} | Loss: {total_loss/total:.4f} | Train Acc: {train_acc:.2f}% | Test Acc: {test_acc:.2f}%")
-
-    def evaluate(self, dataloader: DataLoader, device: str = 'cuda') -> float:
-        self.eval()
-        correct = 0
-        total = 0
-        with torch.no_grad():
-            for inputs, targets in dataloader:
-                inputs, targets = inputs.to(device), targets.to(device)
-                outputs = self(inputs)
-                _, predicted = outputs.max(1)
-                total += targets.size(0)
-                correct += predicted.eq(targets).sum().item()
-        
-        return 100. * correct / total
