@@ -100,12 +100,11 @@ Output: Generates ablation_study.png.
 
 In accordance with project guidelines:
 
-* Original Implementation: The CKNLayer and CKNSequential classes in src/models.py are implemented from scratch based on the mathematical formulation of Convolutional Kernel Networks. This includes manual patch extraction via torch.nn.Unfold and the Gaussian kernel mapping.
-* Unsupervised Learning: The optimization loop (Spherical K-Means) in CKNLayer is a custom implementation designed to normalize patches and update centroids without external clustering libraries.
-* Custom Data Pipeline: The SyntheticBars class in src/utils.py is a custom implementation created to generate procedural data for theoretical validation.
-* Visualization: All plotting scripts were created specifically for this project to interpret CKN-specific data structures.
-* Standard Components: torchvision is used solely for loading standard datasets. The optimizer used is standard Adam (torch.optim).
-* Baseline Implementation: The CNN baseline architecture and training loop (cnn_baseline.py) are adapted from standard practices described in Aurélien Géron's book, Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow.
+* **Original Implementation**: The `CKNLayer` and `CKNSequential` classes in `src/models.py` are implemented from scratch. We consulted the repository `claying/CKN-Pytorch-image` to understand the tensor dimensions of the Gaussian kernel operations, but the final PyTorch implementation (leveraging `torch.nn.Unfold` and custom modularity) is original.
+* **Unsupervised Learning**: The optimization loop (Spherical K-Means) is a custom implementation designed to normalize patches and update centroids without external clustering libraries.
+* **Custom Data Pipeline**: The `SyntheticBars` class in `src/utils.py` is a custom implementation created to generate procedural data for theoretical validation.
+* **Visualization**: All plotting scripts were created specifically for this project.
+* **Baseline Implementation**: The CNN baseline architecture and training loop (`cnn_baseline.py`) are adapted from standard practices described in Aurélien Géron's book, *Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow*.
 
 ## References
 
