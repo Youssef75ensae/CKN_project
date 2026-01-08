@@ -9,6 +9,7 @@ The project is organized as follows:
 * **`src/`**: Contains the core source code.
     * `models.py`: Custom implementation of `CKNLayer` (patch extraction, Gaussian kernel, pooling) and `CKNSequential`. Features dynamic layer sizing for variable input resolutions.
     * `utils.py`: Utilities for reproducibility (seeding), data loading (STL-10, Fashion-MNIST), and synthetic data generation.
+    * **`cnn_baseline.py`**: Implementation of the supervised CNN baseline used for performance comparison.
 * **`main.py`**: The primary execution script. It orchestrates the pipeline: dataset loading, unsupervised feature learning, and supervised linear classification.
 * **`ablation_study.py`**: Performs sensitivity analysis on hyperparameters (Capacity, Selectivity, Budget).
 * **`plot_ablation.py`**: Generates comparative figures based on ablation results.
@@ -104,8 +105,10 @@ In accordance with project guidelines:
 * Custom Data Pipeline: The SyntheticBars class in src/utils.py is a custom implementation created to generate procedural data for theoretical validation.
 * Visualization: All plotting scripts were created specifically for this project to interpret CKN-specific data structures.
 * Standard Components: torchvision is used solely for loading standard datasets. The optimizer used is standard Adam (torch.optim).
+* Baseline Implementation: The CNN baseline architecture and training loop (cnn_baseline.py) are adapted from standard practices described in Aurélien Géron's book, Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow.
 
 ## References
 
 * Mairal, J., Koniusz, P., Harchaoui, Z., & Schmid, C. (2014). Convolutional Kernel Networks. Advances in Neural Information Processing Systems (NIPS).
 * Coates, A., Ng, A., & Lee, H. (2011). An Analysis of Single-Layer Networks in Unsupervised Feature Learning. AISTATS.
+* Géron, A. (2019). Hands-on machine learning with Scikit-Learn, Keras, and TensorFlow. O'Reilly Media.
