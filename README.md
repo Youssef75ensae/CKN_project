@@ -1,21 +1,27 @@
 # Convolutional Kernel Networks (CKN) on STL-10
 
-This repository hosts the final project for the **Advanced Machine Learning** course (taught by **Austin Stromme** at **ENSAE Paris**).
-It provides a reproducible **PyTorch implementation of Convolutional Kernel Networks (CKN)**, bridging the gap between Reproducing Kernel Hilbert Spaces (RKHS) and Deep Learning. The project explores the effectiveness of **unsupervised dictionary learning** (specifically Spherical K-Means) combined with Gaussian kernel operations.
+This repository hosts the final project for the Advanced Machine Learning course (taught by Austin Stromme at ENSAE Paris).
+It provides a reproducible PyTorch implementation of Convolutional Kernel Networks (CKN), bridging the gap between Reproducing Kernel Hilbert Spaces (RKHS) and Deep Learning. The project explores the effectiveness of unsupervised dictionary learning (specifically Spherical K-Means) combined with Gaussian kernel operations.
 
 ## Project Structure
 
-The project is organized as follows:
+The project is organized to separate the core model logic from experimental scripts and results:
 
-* **`src/`**: Contains the core source code.
+* **`src/`**: Contains the core library code.
     * `models.py`: Custom implementation of `CKNLayer` (patch extraction, Gaussian kernel, pooling) and `CKNSequential`. Features dynamic layer sizing for variable input resolutions.
+    * `cnn_baseline.py`: Implementation of the supervised CNN baseline used for performance comparison.
     * `utils.py`: Utilities for reproducibility (seeding), data loading (STL-10, Fashion-MNIST), and synthetic data generation.
-    * **`cnn_baseline.py`**: Implementation of the supervised CNN baseline used for performance comparison.
-* **`main.py`**: The primary execution script. It orchestrates the pipeline: dataset loading, unsupervised feature learning, and supervised linear classification.
-* **`ablation_study.py`**: Performs sensitivity analysis on hyperparameters (Capacity, Selectivity, Budget).
-* **`plot_ablation.py`**: Generates comparative figures based on ablation results.
-* **`plot_metrics.py`**: Visualizes training dynamics (Loss/Accuracy).
-* **`visualize_filters.py`**: Visualizes the filters learned by the unsupervised layer.
+
+* **`scripts/`**: Contains standalone scripts for analysis and visualization.
+    * `ablation_study.py`: Performs sensitivity analysis on hyperparameters (Capacity, Selectivity, Budget).
+    * `visualize_filters.py`: Visualizes the filters learned by the unsupervised layer.
+    * `plot_ablation.py`: Generates comparative figures based on ablation results.
+    * `plot_metrics.py`: Visualizes training dynamics (Loss/Accuracy).
+
+* **`figures/`**: Stores generated images (learned filters, training curves).
+* **`results/`**: Stores quantitative outputs (CSV logs from ablation studies).
+
+* **`main.py`**: The primary execution script at the root. It orchestrates the pipeline: dataset loading, unsupervised feature learning, and supervised linear classification.
 
 ## Requirements
 
