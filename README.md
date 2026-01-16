@@ -106,7 +106,7 @@ Output: Generates ablation_study.png.
 ## Contribution
 
 * **Core Architecture**: The `CKNLayer` and `CKNSequential` modules were implemented from scratch to ensure modularity. I briefly referred to the `claying/CKN-Pytorch-image` repository to clarify tensor broadcasting rules, but the final logic (using `torch.nn.Unfold`) is original.
-* **Unsupervised Optimization**: I wrote the Spherical K-Means algorithm manually to handle unit-sphere projection without relying on `scikit-learn`'s generic clustering.
+* **Unsupervised Optimization**: The optimization loop (Spherical K-Means) is a custom implementation designed to normalize patches and update centroids without external clustering libraries.
 * **Data**: The `SyntheticBars` generator in `src/utils.py` is a custom script written to validate the model's edge detection capabilities.
 * **Baselines**: The CNN baseline follows the standard architecture described by Aurélien Géron (*Hands-On Machine Learning*).
 
