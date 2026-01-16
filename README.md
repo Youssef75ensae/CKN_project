@@ -103,15 +103,12 @@ python plot_ablation.py
 
 Output: Generates ablation_study.png.
 
-## Code Originality Statement
+## Contribution
 
-In accordance with project guidelines:
-
-* **Original Implementation**: The `CKNLayer` and `CKNSequential` classes in `src/models.py` are implemented from scratch. We consulted the repository `claying/CKN-Pytorch-image` to understand the tensor dimensions of the Gaussian kernel operations, but the final PyTorch implementation (leveraging `torch.nn.Unfold` and custom modularity) is original.
-* **Unsupervised Learning**: The optimization loop (Spherical K-Means) is a custom implementation designed to normalize patches and update centroids without external clustering libraries.
-* **Custom Data Pipeline**: The `SyntheticBars` class in `src/utils.py` is a custom implementation created to generate procedural data for theoretical validation.
-* **Visualization**: All plotting scripts were created specifically for this project.
-* **Baseline Implementation**: The CNN baseline architecture and training loop (`cnn_baseline.py`) are adapted from standard practices described in Aurélien Géron's book, *Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow*.
+* **Core Architecture**: The `CKNLayer` and `CKNSequential` modules were implemented from scratch to ensure modularity. I briefly referred to the `claying/CKN-Pytorch-image` repository to clarify tensor broadcasting rules, but the final logic (using `torch.nn.Unfold`) is original.
+* **Unsupervised Optimization**: I wrote the Spherical K-Means algorithm manually to handle unit-sphere projection without relying on `scikit-learn`'s generic clustering.
+* **Data**: The `SyntheticBars` generator in `src/utils.py` is a custom script written to validate the model's edge detection capabilities.
+* **Baselines**: The CNN baseline follows the standard architecture described by Aurélien Géron (*Hands-On Machine Learning*).
 
 ## References
 
