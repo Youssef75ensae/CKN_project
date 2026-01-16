@@ -1,6 +1,7 @@
 # Convolutional Kernel Networks (CKN) on STL-10
 
-This repository contains a PyTorch implementation of Convolutional Kernel Networks (CKN). The project explores the effectiveness of unsupervised dictionary learning (specifically Spherical K-Means) combined with Gaussian kernel operations. The model is evaluated on the STL-10 dataset, as well as Fashion-MNIST and a custom synthetic dataset to demonstrate robustness and theoretical validity.
+This repository hosts the final project for the **Advanced Machine Learning** course (taught by **Austin Stromme** at **ENSAE Paris**).
+It provides a reproducible **PyTorch implementation of Convolutional Kernel Networks (CKN)**, bridging the gap between Reproducing Kernel Hilbert Spaces (RKHS) and Deep Learning. The project explores the effectiveness of **unsupervised dictionary learning** (specifically Spherical K-Means) combined with Gaussian kernel operations.
 
 ## Project Structure
 
